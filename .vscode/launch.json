@@ -1,0 +1,35 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+         {
+            "name": "Streamlit example",
+            "type": "python",
+            "request": "launch",
+            "module": "streamlit",
+            "args": [
+                "run",
+                "example.py",
+                "--server.port",
+                "8501",
+                "--server.enableWebsocketCompression",
+                "false",
+                "--server.enableStaticServing",
+                "true",
+                // "--server.enableCORS",
+                // "false",
+                // "server.enableXsrfProtection",
+                // "false"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src",
+                "AWS_PROFILE": "aws-bkv-development", //comment to disable S3 bucket
+                "ENVIRONMENT": "development"
+            },
+            "cwd": "${workspaceFolder}/src"
+        },
+            
+    ]
+}
