@@ -26,7 +26,7 @@ const App = () => {
       ]}
       dropdownMenu={true}
       hiddenColumns={{
-        indicators: true,
+        indicators: false,
       }}
       contextMenu={true}
       multiColumnSorting={true}

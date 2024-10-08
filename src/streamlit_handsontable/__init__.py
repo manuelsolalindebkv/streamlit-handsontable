@@ -2,6 +2,9 @@ import os
 import streamlit.components.v1 as components
 import pandas as pd
 from json import loads
+import json
+import streamlit as st
+from typing import List
 
 # Create a _RELEASE constant. We'll set this to False while we're developing
 # the component, and True when we're ready to package and distribute it.
@@ -39,33 +42,43 @@ else:
     build_dir = os.path.join(parent_dir, "frontend/build")
     _component_func = components.declare_component("handsontable_element", path=build_dir)
 
+version_control = 0
 
 def handsontable_element(df: pd.DataFrame,
                         df_key=None, 
-               on_change=None,
-               override_height=900,
-               key=None,
-               **kwargs):
+                        on_change:callable=None,
+                        on_row_add:callable=None,
+                        on_row_delete:callable=None,
+                        hide_columns:List[str]=[],
+                        override_height=900,
+                        key='handsontable',
+                        **kwargs):
     """Create a new instance of "handsontable_element".
     """
 
     # convert df to json object
-
-    df_json = df.copy()
-    
-    df_json = df_json.to_json(orient="split")
-
-    # print(df_json)
+    df_json = df.copy().to_json(orient="split")
 
     component_value = _component_func(
         key=key,
         df_json=df_json,
+        hide_columns=hide_columns,
         override_height=override_height,
-        default="[]",  # Default return empty JSON list
+        default=json.dumps({"version": 0}),
     )
 
     # Parse component_value since it's JSON and return to Streamlit
     response =  loads(component_value)
+
+    version = response['version']
+
+    if 'handsontable_el_version' not in st.session_state:
+        st.session_state.handsontable_el_version = 0
+
+    if version == st.session_state.handsontable_el_version:
+        return None
+    
+    st.session_state.handsontable_el_version = version
 
     if on_change:
         if 'afterChange' in response:
@@ -74,7 +87,7 @@ def handsontable_element(df: pd.DataFrame,
             changes = []
             for change in afterchange:
                 # get the row and column from the dataframe
-                column = df.columns[change[1]-1]
+                column = df.columns[change[1]]
                 # use df_key to get the row_id
                 row_id = df.iloc[change[0]][df_key]
                 changes.append({
@@ -84,11 +97,17 @@ def handsontable_element(df: pd.DataFrame,
                     'new_value': change[3]
                 })
             on_change(changes)
+    
+    if on_row_add:
+        if 'afterRowAdd' in response:
+            afterRowAdd = response['afterRowAdd']
+            on_row_add(afterRowAdd)
+
+    if on_row_delete:
+        if 'afterRowDelete' in response:
+            afterRowDelete = response['afterRowDelete']
+            on_row_delete(afterRowDelete)
                 
-            
-
-    # print(response)
-
     return True
 
 

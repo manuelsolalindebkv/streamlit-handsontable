@@ -18,11 +18,13 @@ const jsonData = {
   ]
 };
 
+var version_count = 1;
+
 const StreamlitEventsComponent = ({ args }: { args: any }) => {
   const override_height = args["override_height"];
   const df_json = args["df_json"];
-
   const df_data = JSON.parse(df_json)
+  const hide_columns = args["hide_columns"];
 
   // Pull Plotly object from args and parse
   // const plot_obj = JSON.parse(args["plot_obj"]);
@@ -39,6 +41,7 @@ const StreamlitEventsComponent = ({ args }: { args: any }) => {
   useEffect(() => {
     Streamlit.setFrameHeight(override_height);
   }, [override_height]);
+
 
   /** Click handler for plot. */
   const plotlyEventHandler = (data: any, event: string) => {
@@ -58,21 +61,35 @@ const StreamlitEventsComponent = ({ args }: { args: any }) => {
       response[event] = data;
     }
 
+    version_count += 1;
+    response['version'] = version_count;
+
+    console.log('version_count', version_count);
+    
     let response_str: string;
     response_str = JSON.stringify(response);
     Streamlit.setComponentValue(response_str);
+    console.log('response', response);
+
+    // if (event === 'afterRowAdd') {
+    //   Streamlit.setComponentValue({});
+    // }
 
   };
+
 
   return(
     <div>
 
     <h1>Handsontable Example</h1>
       <HandsontableComponent 
+          data={df_data} 
           afterChange={(data) => plotlyEventHandler(data,'afterChange')}
           afterRowAdd={(data) => plotlyEventHandler(data,'afterRowAdd')}
           afterRowDelete={(data) => plotlyEventHandler(data,'afterRowDelete')}
-          data={df_data} />
+          onReload={() => console.log('reloaded')}
+          hide_columns={hide_columns}
+          />
       <h1>HandsOnTabl</h1>
       <HandsOnTable />
     </div>
