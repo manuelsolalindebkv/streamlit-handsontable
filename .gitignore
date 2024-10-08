@@ -75,4 +75,4 @@ venv
 
 
 # include frontend build
-!src/streamlit_plotly_map/frontend/build
+!src/**/frontend/build

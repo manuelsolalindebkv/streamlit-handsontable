@@ -3,7 +3,7 @@ import { HotTable } from "@handsontable/react"
 import "handsontable/dist/handsontable.full.css"
 import { useEffect } from "react"
 import { useRef } from "react"
-import Handsontable from 'handsontable';
+// import Handsontable from 'handsontable';
 import { registerAllModules } from 'handsontable/registry';
 
 
@@ -34,91 +34,91 @@ const HandsontableComponent: React.FC<TableProps> = ({
 }) => {
   const { columns, data: initial_tabledata } = initial_data
 
-  const hotTableRef = useRef<Handsontable.Core | null>(null);
-
   const hotTableComponent = useRef<any>(null);
 
 
-
-  // const [tabledata, setTableData] = React.useState(initial_data.data)
-
-
-  // // Callback to handle data changes
-  // const handleTableChange = useCallback((changes, source) => {
-  //   if (source !== 'loadData') {
-  //     if (changes) {
-  //       const updatedData = [...tabledata]; // Make a copy of the current data
-  //       changes.forEach(([row, prop, oldValue, newValue]: [number, number, any, any]) => {
-  //         updatedData[row][prop-1] = newValue; // Update the cell with new value
-  //       });
-  //       console.log(tabledata)
-  //       console.log(updatedData)
-  //       setTableData(updatedData); // Update state
-  //     }
-  //   }
-  // }, [tabledata]);
-
-  // // // Callback for row insert
-  // const handleRowInsert = useCallback((index, amount) => {
-  //   const newRow = Array(tabledata[0].length).fill(null); // Add empty row
-  //   const updatedData = [...tabledata];
-  //   updatedData.splice(index, 0, newRow);
-  //   // setTableData(updatedData as any);
-  //   console.log(updatedData)
-  // }, [tabledata]);
-
-  // // Callback for row delete
-  // const handleRowRemove = useCallback((index, amount) => {
-  //   const updatedData = [...tabledata];
-  //   updatedData.splice(index, amount); // Remove the row
-  //   setTableData(updatedData as any);
-  // }, [tabledata]);
-
+  
   const afterChange = (changes: any, source: any) => {
-    // handleTableChange(changes, source);
-    // console.log(source)
-    console.log(changes)
     const hotTableClass = hotTableComponent.current
+
     if (hotTableClass) {
+
       let hotInstance = hotTableClass.hotInstance
-      // get row index
-      let res = hotInstance.getCell(changes[0][0], changes[0][1])
+      if (changes && changes.length > 0) {
 
-      console.log(res)
+        let physical_changes = changes.map((change: [number, number, any, any]) => {
+          const [rowIndex, columnIndex, oldValue, newValue] = change
+          const physicalRowIndex = hotInstance.toPhysicalRow(rowIndex);
+          const physicalColumnIndex = hotInstance.toPhysicalColumn(columnIndex);
+          return [physicalRowIndex, physicalColumnIndex, oldValue, newValue]
+        }
+        )
 
+        onAfterChange(physical_changes)
 
+      }
+
+    } else {
+      console.error('hotTableClass is null')
+      onAfterChange([])
+    }
+
+  }
+
+  const beforeCreateRow = (index: any, amount: any, source: any) => {
+    console.log('beforeCreateRow', index, amount, source)
+    const hotTableClass = hotTableComponent.current
+    if (!hotTableClass) {
+      console.error('hotTableClass is null')
+      return false
+    } else {
+      let hotInstance = hotTableClass.hotInstance
+      // check if filters are applied
+      
+      // Get the Filters plugin
+      const filtersPlugin = hotInstance.getPlugin('Filters');
+
+      console.log('filtersPlugin', filtersPlugin)
+      console.log('hotTableClass', hotTableClass)
+      console.log('hotInstance', hotInstance)
+      //TODO: disable adding row if filters are applied
 
     }
-    console.log(hotTableClass)
 
 
-
-    
-
-    // console.log(tabledata)
-    if (changes) {
-      onAfterChange(changes)
-    }
+    // if (index === 0) {
+    //   console.log('beforeCreateRow', index, amount, source)
+    //   return false
+    // }
   }
 
   const afterRowAdd = (row_index: any, amount: any) => {
     console.log('row added ', row_index)
 
-    // handleRowInsert(row_index, amount)
-    // $timeout(function() {
-    //   $scope.$digest();
-    // });
+    const hotTableClass = hotTableComponent.current
 
-
-    if (row_index) {
-      onAfterRowAdd(row_index)
+    if (row_index && hotTableClass) {
+      let hotInstance = hotTableClass.hotInstance
+      let physicalRowIndex = hotInstance.toPhysicalRow(row_index);
+      console.log('physicalRowIndex', physicalRowIndex)
+      onAfterRowAdd(physicalRowIndex)
+    } else {
+      // TODO: error adding row before first row
+      if (row_index === 0) {
+        onAfterRowAdd(row_index)
+      } else {
+        console.error('hotTableClass is null')
+      }
     }
   }
 
-  const afterRowDelete = (changes: any) => {
-    console.log(changes)
-    if (changes) {
-      onAfterRowDelete(changes)
+  const afterRowDelete = (row_index: any) => {
+    console.log(row_index)
+    const hotTableClass = hotTableComponent.current
+    if (row_index && hotTableClass) {
+      let hotInstance = hotTableClass.hotInstance
+      let physicalRowIndex = hotInstance.toPhysicalRow(row_index);
+      onAfterRowDelete(physicalRowIndex)
     }
   }
 
@@ -126,6 +126,12 @@ const HandsontableComponent: React.FC<TableProps> = ({
   useEffect(() => {
     console.log('initial data', initial_data)
     // setTableData(initial_data.data)
+    // load hotTable
+    const hotTableClass = hotTableComponent.current
+
+
+
+
     onReload()
   }, [initial_data])
 
@@ -138,13 +144,15 @@ const HandsontableComponent: React.FC<TableProps> = ({
   return (
     <HotTable
       data={initial_tabledata}
-      dropdownMenu={true}
+      dropdownMenu={['filter_by_condition', 'filter_action_bar', 'filter_by_value']}
       hiddenColumns={{
         columns: hidden_columns_ids,
         indicators: false,
       }}
+      columnSorting={true}
       filters={true}
       contextMenu={true} //add and remove rows
+      // contextMenu={['row_above', 'row_below', '---------', 'undo', 'redo']}
       colHeaders={columns}
       rowHeaders={true}
       sortByRelevance={true}
@@ -153,11 +161,11 @@ const HandsontableComponent: React.FC<TableProps> = ({
       licenseKey="non-commercial-and-evaluation"
       afterChange={afterChange}
       afterCreateRow={afterRowAdd}
+      beforeCreateRow={beforeCreateRow}
       afterRemoveRow={afterRowDelete}
       width="auto"
       height="auto"
       stretchH="all"
-      // ref={hotTableRef}
       ref={hotTableComponent}
     />
   )
