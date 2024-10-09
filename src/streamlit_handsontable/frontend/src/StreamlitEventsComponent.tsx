@@ -25,6 +25,10 @@ const StreamlitEventsComponent = ({ args }: { args: any }) => {
   const df_json = args["df_json"];
   const df_data = JSON.parse(df_json)
   const hide_columns = args["hide_columns"];
+  const table_version = args["table_version"];
+
+  console.log(args);
+  console.log('table version', table_version);
 
 
   useEffect(() => {
@@ -65,8 +69,10 @@ const StreamlitEventsComponent = ({ args }: { args: any }) => {
 
   return(
     <div>
-      <HandsontableComponent 
+      <HandsontableComponent
           data={df_data} 
+          table_version={table_version}
+          height={override_height} 
           afterChange={(data) => plotlyEventHandler(data,'afterChange')}
           afterRowAdd={(data) => plotlyEventHandler(data,'afterRowAdd')}
           afterRowDelete={(data) => plotlyEventHandler(data,'afterRowDelete')}

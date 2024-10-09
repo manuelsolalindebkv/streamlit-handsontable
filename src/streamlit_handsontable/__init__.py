@@ -45,6 +45,7 @@ else:
 version_control = 0
 
 def handsontable_element(df: pd.DataFrame,
+                        table_version:int, # update this to force a re-render
                         df_key=None, 
                         on_change:callable=None,
                         on_row_add:callable=None,
@@ -61,6 +62,7 @@ def handsontable_element(df: pd.DataFrame,
 
     component_value = _component_func(
         key=key,
+        table_version=int(table_version),
         df_json=df_json,
         hide_columns=hide_columns,
         override_height=override_height,
@@ -70,15 +72,16 @@ def handsontable_element(df: pd.DataFrame,
     # Parse component_value since it's JSON and return to Streamlit
     response =  loads(component_value)
 
-    version = response['version']
 
+    # this if for preventing the rerun of the component
+    version = response['version']
+    print(f"Response Version: {version}")
     if 'handsontable_el_version' not in st.session_state:
         st.session_state.handsontable_el_version = 0
-
     if version == st.session_state.handsontable_el_version:
         return None
-    
     st.session_state.handsontable_el_version = version
+
 
     if on_change:
         if 'afterChange' in response:

@@ -14,6 +14,8 @@ interface TableProps {
     index: number[]
     data: any[][]
   }
+  table_version: number
+  height: number
   afterChange: (data: any) => void
   afterRowAdd: (data: any) => void
   afterRowDelete: (data: any) => void
@@ -26,6 +28,8 @@ registerAllModules();
 
 const HandsontableComponent: React.FC<TableProps> = ({
   data: initial_data,
+  table_version,
+  height,
   afterChange: onAfterChange,
   afterRowAdd: onAfterRowAdd,
   afterRowDelete: onAfterRowDelete,
@@ -35,6 +39,8 @@ const HandsontableComponent: React.FC<TableProps> = ({
   const { columns, data: initial_tabledata } = initial_data
 
   const hotTableComponent = useRef<any>(null);
+
+  const [tabledata, setTableData] = React.useState(initial_tabledata)
 
 
   
@@ -124,26 +130,29 @@ const HandsontableComponent: React.FC<TableProps> = ({
 
   // on component mount with hooks
   useEffect(() => {
-    console.log('initial data', initial_data)
-    // setTableData(initial_data.data)
-    // load hotTable
+    console.log('table_version changed')
     const hotTableClass = hotTableComponent.current
-
-
-
-
+    setTableData(initial_tabledata)
     onReload()
-  }, [initial_data])
+  }, [table_version])
+  
+  useEffect(() => {
+    const hotTableClass = hotTableComponent.current
+    // console.log('initial_tabledata changed')
+  }, [initial_tabledata])
 
 
-  console.log(initial_data)
+
+
   let hidden_columns_ids = hide_columns.map((col) => columns.indexOf(col)).filter((x) => x !== -1)
-
-  console.log(hidden_columns_ids)
+  
+  // console.log(initial_data)
+  // console.log(hidden_columns_ids)
 
   return (
     <HotTable
-      data={initial_tabledata}
+      data={tabledata}
+      height={height}
       dropdownMenu={['filter_by_condition', 'filter_action_bar', 'filter_by_value']}
       hiddenColumns={{
         columns: hidden_columns_ids,
@@ -163,8 +172,7 @@ const HandsontableComponent: React.FC<TableProps> = ({
       afterCreateRow={afterRowAdd}
       beforeCreateRow={beforeCreateRow}
       afterRemoveRow={afterRowDelete}
-      width="auto"
-      height="auto"
+      colWidths={columns.map((col) => Math.min(999, 100))} //fixme
       stretchH="all"
       ref={hotTableComponent}
     />
