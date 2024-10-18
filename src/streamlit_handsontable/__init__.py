@@ -4,13 +4,13 @@ import pandas as pd
 from json import loads
 import json
 import streamlit as st
-from typing import List
+from typing import List, Dict
 
 # Create a _RELEASE constant. We'll set this to False while we're developing
 # the component, and True when we're ready to package and distribute it.
 # (This is, of course, optional - there are innumerable ways to manage your
 # release process.)
-_RELEASE = True
+_RELEASE = False
 
 # Declare a Streamlit component. `declare_component` returns a function
 # that is used to create instances of the component. We're naming this
@@ -42,76 +42,150 @@ else:
     build_dir = os.path.join(parent_dir, "frontend/build")
     _component_func = components.declare_component("handsontable_element", path=build_dir)
 
-version_control = 0
+class HandsontableComponent:
 
-def handsontable_element(df: pd.DataFrame,
-                        table_version:int, # update this to force a re-render
-                        df_key=None, 
-                        on_change:callable=None,
-                        on_row_add:callable=None,
-                        on_row_delete:callable=None,
-                        hide_columns:List[str]=[],
-                        override_height=900,
-                        key='handsontable',
-                        **kwargs):
-    """Create a new instance of "handsontable_element".
-    """
+    __instance = None
 
-    # convert df to json object
-    df_json = df.copy().to_json(orient="split")
-
-    component_value = _component_func(
-        key=key,
-        table_version=int(table_version),
-        df_json=df_json,
-        hide_columns=hide_columns,
-        override_height=override_height,
-        default=json.dumps({"version": 0}),
-    )
-
-    # Parse component_value since it's JSON and return to Streamlit
-    response =  loads(component_value)
-
-
-    # this if for preventing the rerun of the component
-    version = response['version']
-    print(f"Response Version: {version}")
-    if 'handsontable_el_version' not in st.session_state:
-        st.session_state.handsontable_el_version = 0
-    if version == st.session_state.handsontable_el_version:
-        return None
-    st.session_state.handsontable_el_version = version
-
-
-    if on_change:
-        if 'afterChange' in response:
-            afterchange = response['afterChange']
-            # sample afterchange [[1, 1, 2, None]]
-            changes = []
-            for change in afterchange:
-                # get the row and column from the dataframe
-                column = df.columns[change[1]]
-                # use df_key to get the row_id
-                row_id = df.iloc[change[0]][df_key]
-                changes.append({
-                    'row_id': row_id,
-                    'column': column,
-                    'old_value': change[2],
-                    'new_value': change[3]
-                })
-            on_change(changes)
+    def __new__(cls, *args, **kwargs):
+        if cls.__instance is None:
+            cls.__instance = super(HandsontableComponent,cls).__new__(cls)
+        return cls.__instance
     
-    if on_row_add:
-        if 'afterRowAdd' in response:
-            afterRowAdd = response['afterRowAdd']
-            on_row_add(afterRowAdd)
+    def __init__(self, 
+                 df: pd.DataFrame, 
+                 df_key:str, 
+                 columns_config:Dict[str,dict]={},
+                 on_change:callable=None, 
+                 on_row_add:callable=None, 
+                 on_row_delete:callable=None, 
+                 hide_columns:List[str]=[],
+                 skip_columns:List[str]=[],
+                 override_height=900, 
+                 key='handsontable',
+                **kwargs):
+        self.current_df:pd.DataFrame = df
+        self.df_json = df.copy().to_json(orient="split")
+        self._reaction_version = 0
+        self.df_key = df_key
+        self.on_change = on_change
+        self.on_row_add = on_row_add
+        self.on_row_delete = on_row_delete
+        self.hide_columns = hide_columns
+        self.skip_columns = skip_columns
+        self.override_height = override_height
+        self.key = key
+        self.kwargs = kwargs
+        self.last_response_version = 0
+        self.reaction = {}
+        self.table_version = 0
+        self.columns_config = columns_config
 
-    if on_row_delete:
-        if 'afterRowDelete' in response:
-            afterRowDelete = response['afterRowDelete']
-            on_row_delete(afterRowDelete)
-                
-    return True
+        if df_key:
+            assert df_key in self.current_df.columns, f"df_key {df_key} not in dataframe columns"
+
+    def update_initial_df(self, df:pd.DataFrame):
+        self.current_df = df
+        self.df_json = df.copy().to_json(orient="split")
+        self.table_version += 1
+
+    # def update_df_row(self, change):
+    #     row_id = change['row_id']
+    #     column = change['column']
+    #     new_value = change['new_value']
+    #     self.current_df.loc[self.current_df['id'] == row_id, column] = new_value
+    #     # update row version
+    #     self.current_df.loc[self.current_df['id'] == row_id, 'version'] += 1
+
+    def reaction_update_row(self,row_dict):
+        assert '_row_index' in row_dict, "row_index not in row_dict"
+        self.reaction_update_rows([row_dict])
+
+    def reaction_update_rows(self,rows,alert_message:str=None):
+        self._reaction_version += 1
+        self.reaction = {
+            "reaction_id": self._reaction_version,
+            "reaction_type": "update_rows",
+            "rows": rows
+        }
+        if alert_message:
+            self.reaction['alert_message'] = alert_message
+
+    def reaction_error(self, error_message:str):
+        self._reaction_version += 1
+        self.reaction = {
+            "reaction_id": self._reaction_version,
+            "reaction_type": "error",
+            "error_message": error_message
+        }
+
+
+    def reaction_update_deleted_row(self):
+        self._reaction_version += 1
+        self.reaction = {
+            "reaction_id": self._reaction_version,
+            "reaction_type": "delete_row"
+        }
+
+    def reaction_undo_last_command(self):
+        self._reaction_version += 1
+        self.reaction = {
+            "reaction_id": self._reaction_version,
+            "reaction_type": "undo"
+        }
+
+    def render(self):
+      
+        component_value = _component_func(
+            key=self.key,
+            table_version=self.table_version,
+            df_json=self.df_json,
+            columns_config=json.dumps(self.columns_config),
+            df_key=self.df_key,
+            reaction=json.dumps(self.reaction),
+            hide_columns=self.hide_columns,
+            skip_columns=self.skip_columns,
+            override_height=self.override_height,
+            default=json.dumps({"version": 0}),
+        )
+
+        # once reaction has been sent, reset it
+        self.reaction = {}
+
+        # Parse component_value since it's JSON and return to Streamlit
+        response =  loads(component_value)
+
+
+        # this if for preventing the rerun of the component
+        version = response['version']
+        print(f"Response Version: {version}")
+        
+        # if 'handsontable_el_version' not in st.session_state:
+        #     st.session_state.handsontable_el_version = 0
+        # if version == st.session_state.handsontable_el_version:
+        #     return None
+        # st.session_state.handsontable_el_version = version
+
+        if version == self.last_response_version:
+            return None
+        self.last_response_version = version
+
+
+        if self.on_change:
+            if 'afterChange' in response:
+                changes = response['afterChange']
+                self.on_change(changes)
+        
+        if self.on_row_add:
+            if 'afterRowAdd' in response:
+                afterRowAdd = response['afterRowAdd']
+                self.on_row_add(afterRowAdd)
+
+        if self.on_row_delete:
+            if 'afterRowDelete' in response:
+                ids_to_delete = response['afterRowDelete']
+                self.on_row_delete(ids_to_delete)
+                    
+        return True
 
 
 

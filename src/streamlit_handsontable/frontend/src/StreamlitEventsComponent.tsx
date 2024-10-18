@@ -24,11 +24,17 @@ const StreamlitEventsComponent = ({ args }: { args: any }) => {
   const override_height = args["override_height"];
   const df_json = args["df_json"];
   const df_data = JSON.parse(df_json)
-  const hide_columns = args["hide_columns"];
   const table_version = args["table_version"];
+  const hide_columns = args["hide_columns"];
+  const reaction = JSON.parse(args["reaction"]);
+  const df_key = args["df_key"];
+  const columns_config = JSON.parse(args["columns_config"]);
 
-  console.log(args);
-  console.log('table version', table_version);
+  const { reaction_id } = reaction;
+
+  const [local_reaction, setLocalReaction] = React.useState(reaction);
+
+  // console.log(args);
 
 
   useEffect(() => {
@@ -45,13 +51,15 @@ const StreamlitEventsComponent = ({ args }: { args: any }) => {
     }
 
     if (event === 'afterRowAdd') {
-      console.log(data)
       response[event] = data;
     }
     
     if (event === 'afterRowDelete') {
-      console.log(data)
       response[event] = data;
+    }
+
+    if (event === 'afterUndo') {
+      response[event] = true;
     }
 
     version_count += 1;
@@ -61,21 +69,37 @@ const StreamlitEventsComponent = ({ args }: { args: any }) => {
     
     let response_str: string;
     response_str = JSON.stringify(response);
-    Streamlit.setComponentValue(response_str);
-    console.log('response', response);
+    // setLocalReaction({reaction_id:undefined});
+    let returned_value = Streamlit.setComponentValue(response_str);
+
+    console.log('returned_value', returned_value);
 
   };
 
+  useEffect(() => {
+    setLocalReaction(reaction);
+  },[reaction_id]) 
+
+  const afterReaction = () => {
+    console.log('afterReaction');
+    setLocalReaction({reaction_id:undefined});
+  }
+
+  // console.log('local_reaction', local_reaction);
 
   return(
     <div>
       <HandsontableComponent
           data={df_data} 
+          df_key={df_key}
+          columns_config={columns_config} 
           table_version={table_version}
-          height={override_height} 
+          reaction={local_reaction}
+          height={override_height}
           afterChange={(data) => plotlyEventHandler(data,'afterChange')}
           afterRowAdd={(data) => plotlyEventHandler(data,'afterRowAdd')}
           afterRowDelete={(data) => plotlyEventHandler(data,'afterRowDelete')}
+          afterReaction={afterReaction}
           onReload={() => console.log('reloaded')}
           hide_columns={hide_columns}
           />

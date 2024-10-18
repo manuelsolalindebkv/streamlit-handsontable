@@ -1,5 +1,5 @@
 import React, { useCallback } from "react"
-import { HotTable } from "@handsontable/react"
+import { HotColumn, HotTable } from "@handsontable/react"
 import "handsontable/dist/handsontable.full.css"
 import { useEffect } from "react"
 import { useRef } from "react"
@@ -14,11 +14,16 @@ interface TableProps {
     index: number[]
     data: any[][]
   }
+  df_key: string
   table_version: number
+  // Dict[str, dict]
+  columns_config: { [key: string]: { [key: string]: any } }
+  reaction: any
   height: number
   afterChange: (data: any) => void
   afterRowAdd: (data: any) => void
   afterRowDelete: (data: any) => void
+  afterReaction: () => void
   onReload: () => void
   hide_columns: string[]
 }
@@ -28,39 +33,124 @@ registerAllModules();
 
 const HandsontableComponent: React.FC<TableProps> = ({
   data: initial_data,
+  df_key,
   table_version,
+  columns_config,
+  reaction,
   height,
   afterChange: onAfterChange,
   afterRowAdd: onAfterRowAdd,
   afterRowDelete: onAfterRowDelete,
+  afterReaction: onAfterReaction,
   onReload,
   hide_columns,
 }) => {
   const { columns, data: initial_tabledata } = initial_data
+  const { reaction_id } = reaction
 
-  const hotTableComponent = useRef<any>(null);
+  //updata columns config for all columns
+  let hotcolumn_settings: { [key: string]: any }[] = []
+  columns.forEach((col,index) => {
+    let column_dict: { [key: string]: any } = {}
+    if (columns_config.hasOwnProperty(col)) {
+      column_dict = columns_config[col]
+    } 
+    column_dict['data'] = index
+    hotcolumn_settings.push(column_dict)
+  })
 
-  const [tabledata, setTableData] = React.useState(initial_tabledata)
-
+  console.log('hotcolumn_settings', hotcolumn_settings)
 
   
+
+
+  const [tabledata, setTableData] = React.useState(initial_tabledata)
+  
+  // columns that start with _ are metadata columns
+  const metadata_columns = columns.filter((col) => col.startsWith('_'))
+  const id_column = columns.indexOf('_id')
+  const version_column = columns.indexOf('_version')
+  
+  
+  
+  const hotTableComponent = useRef<any>(null);
+
   const afterChange = (changes: any, source: any) => {
     const hotTableClass = hotTableComponent.current
+
+    if (reaction_id) {
+      console.log('skiping afterchange')
+      return
+    } else {
+      console.log('afterchange triggered','source: ', source)
+    }
 
     if (hotTableClass) {
 
       let hotInstance = hotTableClass.hotInstance
       if (changes && changes.length > 0) {
 
+        // filter out changes in metadata columns
+        changes = changes.filter((change: [number, number, any, any]) => {
+          const [rowIndex, columnIndex, oldValue, newValue] = change
+          const column = columns[columnIndex]
+          return !metadata_columns.includes(column)
+        })
+
+        // filter out changes where null is replace by undefined
+        changes = changes.filter((change: [number, number, any, any]) => {
+          const [rowIndex, columnIndex, oldValue, newValue] = change
+          const empty_cells = [null, undefined, '']
+          return !(empty_cells.includes(oldValue) && empty_cells.includes(newValue))
+        })
+          console.log('changes', changes)
+
         let physical_changes = changes.map((change: [number, number, any, any]) => {
           const [rowIndex, columnIndex, oldValue, newValue] = change
           const physicalRowIndex = hotInstance.toPhysicalRow(rowIndex);
           const physicalColumnIndex = hotInstance.toPhysicalColumn(columnIndex);
           return [physicalRowIndex, physicalColumnIndex, oldValue, newValue]
-        }
-        )
+        })
 
-        onAfterChange(physical_changes)
+        console.log('physical_changes', physical_changes)
+
+        let list_of_changes = []
+        for (let physical_change of physical_changes) {
+          //create dictionary with values in metadata columns
+          let metadata_dict = metadata_columns.reduce((acc: { [key: string]: any }, col) => {
+            let col_index = columns.indexOf(col)
+            let value = hotInstance.getSourceDataAtCell(physical_change[0], col_index)
+            acc[col] = value
+            return acc
+          }, {})
+          
+          let [rowIndex, columnIndex, oldValue, newValue] = physical_change
+          let column = columns[columnIndex]
+          list_of_changes.push({
+            row_index: rowIndex,
+            column: column,
+            old_value: oldValue,
+            new_value: newValue,
+            ...metadata_dict
+          })
+
+          // increase version count for row
+          let version = hotInstance.getSourceDataAtCell(rowIndex, version_column)
+          hotInstance.suspendRender()
+          hotInstance.suspendExecution()
+          hotInstance.setSourceDataAtCell(rowIndex, version_column, version + 1)
+          hotInstance.resumeRender()
+          hotInstance.resumeExecution()
+        }
+        
+        console.log('list_of_changes', list_of_changes)
+
+        if (list_of_changes.length > 0) {
+          onAfterChange(list_of_changes)
+        }
+        else {
+          console.log('no changes')
+        }
 
       }
 
@@ -80,14 +170,14 @@ const HandsontableComponent: React.FC<TableProps> = ({
     } else {
       let hotInstance = hotTableClass.hotInstance
       // check if filters are applied
-      
+
       // Get the Filters plugin
       const filtersPlugin = hotInstance.getPlugin('Filters');
 
       console.log('filtersPlugin', filtersPlugin)
       console.log('hotTableClass', hotTableClass)
       console.log('hotInstance', hotInstance)
-      //TODO: disable adding row if filters are applied
+      // TODO: disable adding row if filters are applied
 
     }
 
@@ -102,6 +192,11 @@ const HandsontableComponent: React.FC<TableProps> = ({
     console.log('row added ', row_index)
 
     const hotTableClass = hotTableComponent.current
+
+    if (reaction_id) {
+      console.log('skiping afterRowAdd')
+      return
+    }
 
     if (row_index && hotTableClass) {
       let hotInstance = hotTableClass.hotInstance
@@ -118,35 +213,97 @@ const HandsontableComponent: React.FC<TableProps> = ({
     }
   }
 
-  const afterRowDelete = (row_index: any) => {
-    console.log(row_index)
-    const hotTableClass = hotTableComponent.current
-    if (row_index && hotTableClass) {
-      let hotInstance = hotTableClass.hotInstance
-      let physicalRowIndex = hotInstance.toPhysicalRow(row_index);
-      onAfterRowDelete(physicalRowIndex)
-    }
+
+  const beforeRowDelete = (index: any, amount: any, physicalRows: any, source: any) => {
+    console.log(index, amount, physicalRows, source)
+
+    const hot = hotTableComponent.current.hotInstance
+    let row_ids = physicalRows.map((index: number) => hot.getSourceDataAtCell(index, id_column))
+    console.log('row_ids', row_ids)
+    onAfterRowDelete(row_ids)
   }
+
 
   // on component mount with hooks
   useEffect(() => {
-    console.log('table_version changed')
+    console.log('reaction triggered')
     const hotTableClass = hotTableComponent.current
-    setTableData(initial_tabledata)
-    onReload()
-  }, [table_version])
-  
+    // setTableData(initial_tabledata)
+    // onReload()
+
+    const hot = hotTableClass.hotInstance
+
+    const { reaction_type } = reaction
+
+    
+
+    if (reaction_type === 'update_rows') {
+        if (reaction.hasOwnProperty('alert_message')) {
+          const alert_message = reaction['alert_message']
+          alert(alert_message)
+        }
+        const rows = reaction['rows']
+        for (let row of rows) {
+          let row_index = row['_row_index']
+
+          // use columns to create the updated row
+          let updated_row = columns.map((col) => row[col])
+
+          // update row with updated_row data
+          // hot.populateFromArray(row_index, 0, [updated_row]);
+
+          // update row with updated_row data
+          // hot.suspendRender()
+          console.log('updating row', row_index, updated_row)
+
+          updated_row.map((value, col_index) => {
+            if (value !== null){
+              hot.setSourceDataAtCell(row_index, col_index, value)
+            }
+          })
+          // hot.resumeRender()
+        }
+
+    } else if (reaction_type === 'undo') {
+      // trigger an alert
+      alert('Error: undoing')
+
+      hot.undo()
+      
+    } else if (reaction_type === 'error') {
+      // trigger an alert
+      const error = reaction['error_message']
+      alert('Error: ' + error)
+    }
+
+    onAfterReaction()
+    
+    // onAfterReaction()
+    // hot.resumeExecution()
+    // hot.resumeRender()
+    
+  }, [reaction_id])
+
   useEffect(() => {
     const hotTableClass = hotTableComponent.current
-    // console.log('initial_tabledata changed')
+    console.log('initial_tabledata changed')
+    
   }, [initial_tabledata])
+
+  useEffect(() => {
+    
+    setTableData(initial_tabledata)
+    
+  }, [table_version])
+
+
 
 
 
 
   let hidden_columns_ids = hide_columns.map((col) => columns.indexOf(col)).filter((x) => x !== -1)
-  
-  // console.log(initial_data)
+
+  console.log(reaction)
   // console.log(hidden_columns_ids)
 
   return (
@@ -171,11 +328,28 @@ const HandsontableComponent: React.FC<TableProps> = ({
       afterChange={afterChange}
       afterCreateRow={afterRowAdd}
       beforeCreateRow={beforeCreateRow}
-      afterRemoveRow={afterRowDelete}
-      colWidths={columns.map((col) => Math.min(999, 100))} //fixme
+      beforeRemoveRow={beforeRowDelete}
+      // afterRemoveRow={afterRowDelete}
+      colWidths={columns.map((col) => Math.min(999, 100))} // FIXME
       stretchH="all"
       ref={hotTableComponent}
-    />
+      undo={true}
+      columns={columns.map((col) => {
+        return {
+          readOnly: metadata_columns.includes(col),
+        }
+      })}
+      manualColumnResize={true} // Allow column width to be changed
+    >
+      {/* {columns.map((col, index) => {
+        return <HotColumn key={col} data={index} width={150}/>
+      })} */}
+
+      {hotcolumn_settings.map((col_settings, index) => {
+        return <HotColumn key={index} {...col_settings} />
+      })}
+
+    </HotTable>
   )
 }
 
