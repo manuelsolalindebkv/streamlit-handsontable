@@ -34,7 +34,28 @@ const StreamlitEventsComponent = ({ args }: { args: any }) => {
 
   const [local_reaction, setLocalReaction] = React.useState(reaction);
 
-  // console.log(args);
+  console.log(df_data);
+  console.log(columns_config);
+
+  const { columns } = df_data;
+  const columns_with_dates: string[] = columns.filter((col: string, index: number) => {
+    if (columns_config.hasOwnProperty(col)) {
+      if (columns_config[col].hasOwnProperty('type')) {
+        if (columns_config[col]['type'] === 'date') {
+          return true;
+        }
+      }
+    }
+  });
+  const columns_with_dates_index: number[] = columns_with_dates.map((col: string) => columns.indexOf(col));
+  console.log('columns_with_dates', columns_with_dates)
+  // // df_data.data is an array of arrays that has numeric objects that are time in milliseconds
+  // // We need to convert them to date strings of format 'YYYY-MM-DD'
+  // df_data.data.forEach((row: any[]) => {
+  //   columns_with_dates_index.forEach((col_index: number) => {
+  //     row[col_index] = new Date(row[col_index]).toISOString();
+  //   });
+  // });
 
 
   useEffect(() => {
@@ -67,12 +88,12 @@ const StreamlitEventsComponent = ({ args }: { args: any }) => {
 
     console.log('version_count', version_count);
     
+    console.log('response', response);
     let response_str: string;
     response_str = JSON.stringify(response);
     // setLocalReaction({reaction_id:undefined});
     let returned_value = Streamlit.setComponentValue(response_str);
-
-    console.log('returned_value', returned_value);
+    
 
   };
 

@@ -116,6 +116,30 @@ const HandsontableComponent: React.FC<TableProps> = ({
 
         let list_of_changes = []
         for (let physical_change of physical_changes) {
+
+          // check the format of the new value
+          let [rowIndex, columnIndex, oldValue, newValue] = physical_change
+          let column_name = columns[columnIndex]
+          if (columns_config.hasOwnProperty(column_name)) {
+            let column_config = columns_config[column_name]
+            if (column_config.hasOwnProperty('type')) {
+              let column_type = column_config['type']
+              if (column_type === 'numeric') {
+                newValue = parseFloat(newValue)
+              } else if (column_type === 'checkbox') {
+                //make sure newValue is boolean
+                newValue = newValue === true
+              } else if (column_type === 'date') {
+                //use text value for date
+                // pass
+              } else if (column_type === 'text') {
+                //pass
+              }
+            }
+          }
+
+
+
           //create dictionary with values in metadata columns
           let metadata_dict = metadata_columns.reduce((acc: { [key: string]: any }, col) => {
             let col_index = columns.indexOf(col)
@@ -124,7 +148,6 @@ const HandsontableComponent: React.FC<TableProps> = ({
             return acc
           }, {})
           
-          let [rowIndex, columnIndex, oldValue, newValue] = physical_change
           let column = columns[columnIndex]
           list_of_changes.push({
             row_index: rowIndex,
@@ -257,9 +280,9 @@ const HandsontableComponent: React.FC<TableProps> = ({
           console.log('updating row', row_index, updated_row)
 
           updated_row.map((value, col_index) => {
-            if (value !== null){
+            // if (value !== null){
               hot.setSourceDataAtCell(row_index, col_index, value)
-            }
+            // }
           })
           // hot.resumeRender()
         }
@@ -334,6 +357,7 @@ const HandsontableComponent: React.FC<TableProps> = ({
       stretchH="all"
       ref={hotTableComponent}
       undo={true}
+      dateFormat="YYYY-MM-DD"
       columns={columns.map((col) => {
         return {
           readOnly: metadata_columns.includes(col),
@@ -341,12 +365,13 @@ const HandsontableComponent: React.FC<TableProps> = ({
       })}
       manualColumnResize={true} // Allow column width to be changed
     >
-      {/* {columns.map((col, index) => {
-        return <HotColumn key={col} data={index} width={150}/>
-      })} */}
-
+      
       {hotcolumn_settings.map((col_settings, index) => {
-        return <HotColumn key={index} {...col_settings} />
+        return <HotColumn 
+              key={index} 
+              {...col_settings} 
+              readOnly={metadata_columns.includes(columns[index])}
+        />
       })}
 
     </HotTable>
